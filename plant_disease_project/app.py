@@ -91,6 +91,40 @@ def download_file_from_google_drive(file_id, destination, max_retries=3):
 
     raise RuntimeError("Failed to download file after retries")
 
+def download_with_gdown(file_id, destination):
+    """Try downloading using gdown (handles Drive confirm tokens reliably)."""
+    try:
+        import gdown
+    except Exception as e:
+        raise RuntimeError("gdown is not installed. Add 'gdown' to requirements.txt") from e
+
+    url = f"https://drive.google.com/uc?id={file_id}&export=download"
+    print(f"[gdown] Attempting gdown.download from {url}")
+    # gdown.download returns output path or None
+    out = gdown.download(url, destination, quiet=False)
+    if out is None:
+        raise RuntimeError("gdown failed to download the file")
+    size = os.path.getsize(destination)
+    print(f"[gdown] Download completed: {destination} ({size} bytes)")
+
+def looks_like_zip(path, n=4):
+    """Return True if file starts with PK (zip)"""
+    try:
+        with open(path, "rb") as f:
+            sig = f.read(n)
+            return sig.startswith(b"PK")
+    except Exception:
+        return False
+
+def looks_like_html(path, n=256):
+    """Return True if file seems to contain HTML (Drive error/preview page)"""
+    try:
+        with open(path, "rb") as f:
+            start = f.read(n).lower()
+            return b"<!doctype html" in start or b"<html" in start or b"content-type: text/html" in start
+    except Exception:
+        return False
+
 @st.cache_resource
 def load_model():
     # Logging to stdout appears in Render logs
@@ -100,21 +134,48 @@ def load_model():
         print("[load_model] Model not found, attempting download")
         try:
             download_file_from_google_drive(FILE_ID, MODEL_PATH)
-            print("[load_model] Download succeeded")
+            print("[load_model] Download succeeded (primary downloader)")
             st.success("✅ Model downloaded.")
         except Exception as e:
-            print("[load_model] Download failed:", e)
-            st.error("Failed to download model. See logs.")
-            # Stop the app to avoid calling load_model on missing file
-            st.stop()
+            print("[load_model] Primary download failed:", e)
+            # don't stop yet — we'll try gdown fallback below
 
     # Final verification
     if not os.path.exists(MODEL_PATH):
-        print("[load_model] Model path still missing after download attempts")
-        st.error("Model file missing after download. Check logs.")
-        st.stop()
+        print("[load_model] Model path still missing after primary downloader")
+        # Try gdown fallback
+        try:
+            st.info("⬇️ Attempting download with gdown fallback...")
+            download_with_gdown(FILE_ID, MODEL_PATH)
+            print("[load_model] Download succeeded (gdown)")
+            st.success("✅ Model downloaded via gdown.")
+        except Exception as e:
+            print("[load_model] gdown download failed:", e)
+            st.error("Failed to download model. See logs.")
+            st.stop()
 
     size = os.path.getsize(MODEL_PATH)
+    print(f"[load_model] Model file exists at {MODEL_PATH} size={size} bytes")
+
+    # Quick content checks to provide clearer errors
+    if looks_like_html(MODEL_PATH):
+        print("[load_model] Detected HTML content in downloaded file - likely Drive permissions or preview page.")
+        st.error(
+            "The downloaded model file contains HTML (Drive returned a web page instead of the model). "
+            "This usually means the Google Drive file is not shared publicly. "
+            "Set sharing to 'Anyone with the link' or provide a direct download link."
+        )
+        st.stop()
+
+    if not looks_like_zip(MODEL_PATH):
+        print("[load_model] Warning: downloaded file does not look like a .keras (zip) file.")
+        st.error(
+            "Downloaded file does not appear to be a zip/.keras archive. "
+            "Confirm that the uploaded model was exported as a `.keras` file. "
+            "If it was saved as a SavedModel directory or `.h5`, either change MODEL_PATH or re-export as `.keras`."
+        )
+        st.stop()
+
     print(f"[load_model] Loading model from {MODEL_PATH} (size={size} bytes)")
     try:
         model = tf.keras.models.load_model(MODEL_PATH)
@@ -122,6 +183,7 @@ def load_model():
         return model
     except Exception as e:
         print("[load_model] Error loading model:", e)
+        st.error("Error loading model file. See logs for details about the exception.")
         raise
 
 model = load_model()
