@@ -1,3 +1,4 @@
+import gdown
 import streamlit as st
 import numpy as np
 import tensorflow as tf
@@ -65,3 +66,4 @@ if uploaded_file is not None:
         st.success("Prediction Complete")
         st.subheader("🦠 Disease Information")
         st.write(result)
+
