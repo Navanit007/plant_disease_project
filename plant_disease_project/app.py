@@ -15,37 +15,40 @@ st.set_page_config(
 )
 
 # -----------------------
-# Hugging Face model link (UPDATED)
+# Hugging Face model link (IMPORTANT)
 # -----------------------
 MODEL_PATH = "plant_disease_recog_model_pwp.keras"
-MODEL_URL = "https://huggingface.co/Navanit007/plant-disease-model/resolve/main/plant_disease_recog_model_pwp.keras"
+MODEL_URL = (
+    "https://huggingface.co/Navanit007/plant-disease-model/"
+    "resolve/main/plant_disease_recog_model_pwp.keras"
+)
 
 # -----------------------
 # Load model (cached)
 # -----------------------
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_model():
     if not os.path.exists(MODEL_PATH):
         st.info("⬇️ Downloading model from Hugging Face...")
-        try:
-            r = requests.get(MODEL_URL, stream=True, timeout=60)
-            r.raise_for_status()
-            with open(MODEL_PATH, "wb") as f:
-                for chunk in r.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
-            st.success("✅ Model downloaded successfully")
-        except Exception as e:
-            st.error(f"❌ Failed to download model: {e}")
-            st.stop()
+        r = requests.get(MODEL_URL, stream=True, timeout=60)
+        r.raise_for_status()
 
-    st.info("📦 Loading model...")
-    return tf.keras.models.load_model(MODEL_PATH)
+        with open(MODEL_PATH, "wb") as f:
+            for chunk in r.iter_content(1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+
+        st.success("✅ Model downloaded successfully")
+
+    st.info("📦 Loading model (first time may take ~30s)...")
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+    st.success("✅ Model loaded")
+    return model
 
 model = load_model()
 
 # -----------------------
-# Load disease info JSON
+# Load disease info
 # -----------------------
 with open("plant_disease.json", "r") as file:
     plant_disease = json.load(file)
@@ -87,20 +90,16 @@ def preprocess_image(image):
     return image
 
 # -----------------------
-# Prediction function
+# Prediction
 # -----------------------
 def predict_disease(image):
     img = preprocess_image(image)
-    prediction = model.predict(img)
-    index = np.argmax(prediction)
-
-    confidence = float(np.max(prediction)) * 100
-    disease_info = plant_disease.get(str(index), labels[index])
-
-    return disease_info, labels[index], confidence
+    prediction = model.predict(img, verbose=0)
+    index = int(np.argmax(prediction))
+    return plant_disease.get(str(index), labels[index])
 
 # -----------------------
-# Streamlit UI
+# UI
 # -----------------------
 st.title("🌱 Plant Disease Detection")
 st.write("Upload a leaf image to detect plant disease")
@@ -110,17 +109,13 @@ uploaded_file = st.file_uploader(
     type=["jpg", "jpeg", "png"]
 )
 
-if uploaded_file is not None:
+if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_container_width=True)
 
     if st.button("Predict Disease"):
         with st.spinner("🔍 Analyzing image..."):
-            info, label, confidence = predict_disease(image)
-
+            result = predict_disease(image)
         st.success("✅ Prediction Complete")
-
-        st.subheader("🦠 Disease Result")
-        st.write(f"**Class:** {label}")
-        st.write(f"**Confidence:** {confidence:.2f}%")
-        st.write(info)
+        st.subheader("🦠 Disease Information")
+        st.write(result)
