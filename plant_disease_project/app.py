@@ -1,28 +1,28 @@
-import gdown
 import streamlit as st
 import numpy as np
 import tensorflow as tf
 import json
-import os
 from PIL import Image
-
+import os
+import requests
 
 # Page config
 st.set_page_config(page_title="Plant Disease Detection", layout="centered")
 
-# --- Model download settings ---
+# Dropbox model link
 MODEL_PATH = "plant_disease_recog_model_pwp.keras"
-DRIVE_ID = "1qg_5Fz1w6xfzGljce3fDv8s_DgcpEVC1"
-DRIVE_URL = f"https://drive.google.com/uc?id={DRIVE_ID}"
+MODEL_URL = "https://dl.dropboxusercontent.com/s/agj0djj2oqa7zl9okw51n/plant_disease_recog_model_pwp.keras"
 
 # Load model (cached for performance)
 @st.cache_resource
 def load_model():
-    # Download model only if not present
+    # Download model if not exists
     if not os.path.exists(MODEL_PATH):
-        st.write("⬇️ Downloading model from Google Drive...")
-        gdown.download(DRIVE_URL, MODEL_PATH, quiet=False)
-
+        st.write("⬇️ Downloading model from Dropbox...")
+        r = requests.get(MODEL_URL)
+        with open(MODEL_PATH, "wb") as f:
+            f.write(r.content)
+        st.write("✅ Model downloaded.")
     st.write("✅ Loading model...")
     return tf.keras.models.load_model(MODEL_PATH)
 
@@ -31,6 +31,30 @@ model = load_model()
 # Load disease info
 with open("plant_disease.json", "r") as file:
     plant_disease = json.load(file)
+
+# Labels (optional if already covered in JSON)
+labels = [
+    'Apple___Apple_scab','Apple___Black_rot','Apple___Cedar_apple_rust',
+    'Apple___healthy','Background_without_leaves','Blueberry___healthy',
+    'Cherry___Powdery_mildew','Cherry___healthy',
+    'Corn___Cercospora_leaf_spot Gray_leaf_spot','Corn___Common_rust',
+    'Corn___Northern_Leaf_Blight','Corn___healthy',
+    'Grape___Black_rot','Grape___Esca_(Black_Measles)',
+    'Grape___Leaf_blight_(Isariopsis_Leaf_Spot)','Grape___healthy',
+    'Orange___Haunglongbing_(Citrus_greening)',
+    'Peach___Bacterial_spot','Peach___healthy',
+    'Pepper,_bell___Bacterial_spot','Pepper,_bell___healthy',
+    'Potato___Early_blight','Potato___Late_blight','Potato___healthy',
+    'Raspberry___healthy','Soybean___healthy',
+    'Squash___Powdery_mildew','Strawberry___Leaf_scorch',
+    'Strawberry___healthy','Tomato___Bacterial_spot',
+    'Tomato___Early_blight','Tomato___Late_blight',
+    'Tomato___Leaf_Mold','Tomato___Septoria_leaf_spot',
+    'Tomato___Spider_mites Two-spotted_spider_mite',
+    'Tomato___Target_Spot',
+    'Tomato___Tomato_Yellow_Leaf_Curl_Virus',
+    'Tomato___Tomato_mosaic_virus','Tomato___healthy'
+]
 
 # Image preprocessing
 def preprocess_image(image):
@@ -66,4 +90,3 @@ if uploaded_file is not None:
         st.success("Prediction Complete")
         st.subheader("🦠 Disease Information")
         st.write(result)
-
