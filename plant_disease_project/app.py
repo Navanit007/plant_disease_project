@@ -6,33 +6,50 @@ from PIL import Image
 import os
 import requests
 
+# -----------------------
 # Page config
+# -----------------------
 st.set_page_config(page_title="Plant Disease Detection", layout="centered")
 
+# -----------------------
 # Dropbox model link
+# -----------------------
 MODEL_PATH = "plant_disease_recog_model_pwp.keras"
 MODEL_URL = "https://dl.dropboxusercontent.com/s/agj0djj2oqa7zl9okw51n/plant_disease_recog_model_pwp.keras"
 
-# Load model (cached for performance)
+# -----------------------
+# Load model (cached)
+# -----------------------
 @st.cache_resource
 def load_model():
     # Download model if not exists
     if not os.path.exists(MODEL_PATH):
         st.write("⬇️ Downloading model from Dropbox...")
-        r = requests.get(MODEL_URL)
-        with open(MODEL_PATH, "wb") as f:
-            f.write(r.content)
-        st.write("✅ Model downloaded.")
+        try:
+            r = requests.get(MODEL_URL, stream=True)
+            r.raise_for_status()
+            with open(MODEL_PATH, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            st.write("✅ Model downloaded.")
+        except Exception as e:
+            st.error(f"Failed to download model: {e}")
+            st.stop()
     st.write("✅ Loading model...")
     return tf.keras.models.load_model(MODEL_PATH)
 
 model = load_model()
 
+# -----------------------
 # Load disease info
+# -----------------------
 with open("plant_disease.json", "r") as file:
     plant_disease = json.load(file)
 
-# Labels (optional if already covered in JSON)
+# -----------------------
+# Labels (optional if already in JSON)
+# -----------------------
 labels = [
     'Apple___Apple_scab','Apple___Black_rot','Apple___Cedar_apple_rust',
     'Apple___healthy','Background_without_leaves','Blueberry___healthy',
@@ -56,21 +73,29 @@ labels = [
     'Tomato___Tomato_mosaic_virus','Tomato___healthy'
 ]
 
+# -----------------------
 # Image preprocessing
+# -----------------------
 def preprocess_image(image):
+    image = image.convert("RGB")  # ensure 3 channels
     image = image.resize((160, 160))
-    image = np.array(image)
+    image = np.array(image) / 255.0  # normalize pixels
     image = np.expand_dims(image, axis=0)
     return image
 
+# -----------------------
 # Prediction function
+# -----------------------
 def predict_disease(image):
     img = preprocess_image(image)
     prediction = model.predict(img)
     index = np.argmax(prediction)
-    return plant_disease[index]
+    # Return description from JSON if exists, else label
+    return plant_disease.get(str(index), labels[index])
 
-# UI
+# -----------------------
+# Streamlit UI
+# -----------------------
 st.title("🌱 Plant Disease Detection")
 st.write("Upload a leaf image to detect plant disease")
 
@@ -86,7 +111,6 @@ if uploaded_file is not None:
     if st.button("Predict Disease"):
         with st.spinner("Analyzing image..."):
             result = predict_disease(image)
-
         st.success("Prediction Complete")
         st.subheader("🦠 Disease Information")
         st.write(result)
