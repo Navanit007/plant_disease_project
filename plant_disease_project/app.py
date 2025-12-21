@@ -12,26 +12,44 @@ import requests
 st.set_page_config(page_title="Plant Disease Detection", layout="centered")
 
 # -----------------------
-# Dropbox model link
+# Model path and Google Drive file ID
 # -----------------------
 MODEL_PATH = "plant_disease_recog_model_pwp.keras"
-MODEL_URL = "https://dl.dropboxusercontent.com/s/agj0djj2oqa7zl9okw51n/plant_disease_recog_model_pwp.keras"
+FILE_ID = "1rcnIg1vCj6BwTu0YflFxdkMwjdjAiB57"
+
+# -----------------------
+# Function to download large files from Google Drive
+# -----------------------
+def download_file_from_google_drive(file_id, destination):
+    URL = "https://docs.google.com/uc?export=download"
+    session = requests.Session()
+
+    response = session.get(URL, params={'id': file_id}, stream=True)
+    token = None
+
+    # Check for confirmation token (needed for large files)
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            token = value
+
+    if token:
+        params = {'id': file_id, 'confirm': token}
+        response = session.get(URL, params=params, stream=True)
+
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(32768):
+            if chunk:
+                f.write(chunk)
 
 # -----------------------
 # Load model (cached)
 # -----------------------
 @st.cache_resource
 def load_model():
-    # Download model if not exists
     if not os.path.exists(MODEL_PATH):
-        st.write("⬇️ Downloading model from Dropbox...")
+        st.write("⬇️ Downloading model from Google Drive...")
         try:
-            r = requests.get(MODEL_URL, stream=True)
-            r.raise_for_status()
-            with open(MODEL_PATH, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
+            download_file_from_google_drive(FILE_ID, MODEL_PATH)
             st.write("✅ Model downloaded.")
         except Exception as e:
             st.error(f"Failed to download model: {e}")
