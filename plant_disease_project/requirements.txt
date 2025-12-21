@@ -4,6 +4,7 @@ numpy
 opencv-python-headless
 pillow
 requests
+keras
 
 
 
