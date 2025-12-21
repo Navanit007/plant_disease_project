@@ -9,46 +9,49 @@ import requests
 # -----------------------
 # Page config
 # -----------------------
-st.set_page_config(page_title="Plant Disease Detection", layout="centered")
+st.set_page_config(
+    page_title="Plant Disease Detection",
+    layout="centered"
+)
 
 # -----------------------
-# Dropbox model link
+# Hugging Face model link (UPDATED)
 # -----------------------
 MODEL_PATH = "plant_disease_recog_model_pwp.keras"
-MODEL_URL = "https://dl.dropboxusercontent.com/s/agj0djj2oqa7zl9okw51n/plant_disease_recog_model_pwp.keras"
+MODEL_URL = "https://huggingface.co/Navanit007/plant-disease-model/resolve/main/plant_disease_recog_model_pwp.keras"
 
 # -----------------------
 # Load model (cached)
 # -----------------------
 @st.cache_resource
 def load_model():
-    # Download model if not exists
     if not os.path.exists(MODEL_PATH):
-        st.write("⬇️ Downloading model from Dropbox...")
+        st.info("⬇️ Downloading model from Hugging Face...")
         try:
-            r = requests.get(MODEL_URL, stream=True)
+            r = requests.get(MODEL_URL, stream=True, timeout=60)
             r.raise_for_status()
             with open(MODEL_PATH, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
+                for chunk in r.iter_content(chunk_size=1024 * 1024):
                     if chunk:
                         f.write(chunk)
-            st.write("✅ Model downloaded.")
+            st.success("✅ Model downloaded successfully")
         except Exception as e:
-            st.error(f"Failed to download model: {e}")
+            st.error(f"❌ Failed to download model: {e}")
             st.stop()
-    st.write("✅ Loading model...")
+
+    st.info("📦 Loading model...")
     return tf.keras.models.load_model(MODEL_PATH)
 
 model = load_model()
 
 # -----------------------
-# Load disease info
+# Load disease info JSON
 # -----------------------
 with open("plant_disease.json", "r") as file:
     plant_disease = json.load(file)
 
 # -----------------------
-# Labels (optional if already in JSON)
+# Labels
 # -----------------------
 labels = [
     'Apple___Apple_scab','Apple___Black_rot','Apple___Cedar_apple_rust',
@@ -77,9 +80,9 @@ labels = [
 # Image preprocessing
 # -----------------------
 def preprocess_image(image):
-    image = image.convert("RGB")  # ensure 3 channels
+    image = image.convert("RGB")
     image = image.resize((160, 160))
-    image = np.array(image) / 255.0  # normalize pixels
+    image = np.array(image) / 255.0
     image = np.expand_dims(image, axis=0)
     return image
 
@@ -90,8 +93,11 @@ def predict_disease(image):
     img = preprocess_image(image)
     prediction = model.predict(img)
     index = np.argmax(prediction)
-    # Return description from JSON if exists, else label
-    return plant_disease.get(str(index), labels[index])
+
+    confidence = float(np.max(prediction)) * 100
+    disease_info = plant_disease.get(str(index), labels[index])
+
+    return disease_info, labels[index], confidence
 
 # -----------------------
 # Streamlit UI
@@ -100,7 +106,7 @@ st.title("🌱 Plant Disease Detection")
 st.write("Upload a leaf image to detect plant disease")
 
 uploaded_file = st.file_uploader(
-    "Choose an image", 
+    "Choose an image",
     type=["jpg", "jpeg", "png"]
 )
 
@@ -109,8 +115,12 @@ if uploaded_file is not None:
     st.image(image, caption="Uploaded Image", use_container_width=True)
 
     if st.button("Predict Disease"):
-        with st.spinner("Analyzing image..."):
-            result = predict_disease(image)
-        st.success("Prediction Complete")
-        st.subheader("🦠 Disease Information")
-        st.write(result)
+        with st.spinner("🔍 Analyzing image..."):
+            info, label, confidence = predict_disease(image)
+
+        st.success("✅ Prediction Complete")
+
+        st.subheader("🦠 Disease Result")
+        st.write(f"**Class:** {label}")
+        st.write(f"**Confidence:** {confidence:.2f}%")
+        st.write(info)
