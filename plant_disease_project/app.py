@@ -3,11 +3,17 @@ import numpy as np
 import json
 import tensorflow as tf
 from PIL import Image
+import os
 
 # Function to load the model with error handling
 def load_model():
+    model_path = "models/plant_disease_recog_model_pwp.keras"
+    if not os.path.exists(model_path):
+        st.error(f"Model file not found: {model_path}")
+        return None
+    
     try:
-        model = tf.keras.models.load_model("models/plant_disease_recog_model_pwp.keras", compile=False)
+        model = tf.keras.models.load_model(model_path, compile=False)
         return model
     except Exception as e:
         st.error(f"Error loading model: {e}")
@@ -16,9 +22,16 @@ def load_model():
 # Load the model
 model = load_model()
 
-# Load plant disease labels
-with open("plant_disease.json", 'r') as file:
-    plant_disease = json.load(file)
+# Load plant disease labels with error handling
+def load_labels():
+    try:
+        with open("plant_disease.json", 'r') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        st.error("Label file not found: plant_disease.json")
+        return []
+
+plant_disease = load_labels()
 
 def extract_features(image):
     """Preprocess the image for model prediction."""
