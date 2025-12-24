@@ -1,121 +1,52 @@
 import streamlit as st
 import numpy as np
-import tensorflow as tf
 import json
+import tensorflow as tf
 from PIL import Image
-import os
-import requests
 
-# -----------------------
-# Page config
-# -----------------------
-st.set_page_config(
-    page_title="Plant Disease Detection",
-    layout="centered"
-)
-
-# -----------------------
-# Hugging Face model link (IMPORTANT)
-# -----------------------
-MODEL_PATH = "plant_disease_recog_model_pwp.keras"
-MODEL_URL = (
-    "https://huggingface.co/Navanit007/plant-disease-model/"
-    "resolve/main/plant_disease_recog_model_pwp.keras"
-)
-
-# -----------------------
-# Load model (cached)
-# -----------------------
-@st.cache_resource(show_spinner=False)
+# Function to load the model with error handling
 def load_model():
-    if not os.path.exists(MODEL_PATH):
-        st.info("⬇️ Downloading model from Hugging Face...")
-        r = requests.get(MODEL_URL, stream=True, timeout=60)
-        r.raise_for_status()
+    try:
+        model = tf.keras.models.load_model("models/plant_disease_recog_model_pwp.keras", compile=False)
+        return model
+    except Exception as e:
+        st.error(f"Error loading model: {e}")
+        return None
 
-        with open(MODEL_PATH, "wb") as f:
-            for chunk in r.iter_content(1024 * 1024):
-                if chunk:
-                    f.write(chunk)
-
-        st.success("✅ Model downloaded successfully")
-
-    st.info("📦 Loading model (first time may take ~30s)...")
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-    st.success("✅ Model loaded")
-    return model
-
+# Load the model
 model = load_model()
 
-# -----------------------
-# Load disease info
-# -----------------------
-with open("plant_disease.json", "r") as file:
+# Load plant disease labels
+with open("plant_disease.json", 'r') as file:
     plant_disease = json.load(file)
 
-# -----------------------
-# Labels
-# -----------------------
-labels = [
-    'Apple___Apple_scab','Apple___Black_rot','Apple___Cedar_apple_rust',
-    'Apple___healthy','Background_without_leaves','Blueberry___healthy',
-    'Cherry___Powdery_mildew','Cherry___healthy',
-    'Corn___Cercospora_leaf_spot Gray_leaf_spot','Corn___Common_rust',
-    'Corn___Northern_Leaf_Blight','Corn___healthy',
-    'Grape___Black_rot','Grape___Esca_(Black_Measles)',
-    'Grape___Leaf_blight_(Isariopsis_Leaf_Spot)','Grape___healthy',
-    'Orange___Haunglongbing_(Citrus_greening)',
-    'Peach___Bacterial_spot','Peach___healthy',
-    'Pepper,_bell___Bacterial_spot','Pepper,_bell___healthy',
-    'Potato___Early_blight','Potato___Late_blight','Potato___healthy',
-    'Raspberry___healthy','Soybean___healthy',
-    'Squash___Powdery_mildew','Strawberry___Leaf_scorch',
-    'Strawberry___healthy','Tomato___Bacterial_spot',
-    'Tomato___Early_blight','Tomato___Late_blight',
-    'Tomato___Leaf_Mold','Tomato___Septoria_leaf_spot',
-    'Tomato___Spider_mites Two-spotted_spider_mite',
-    'Tomato___Target_Spot',
-    'Tomato___Tomato_Yellow_Leaf_Curl_Virus',
-    'Tomato___Tomato_mosaic_virus','Tomato___healthy'
-]
-
-# -----------------------
-# Image preprocessing
-# -----------------------
-def preprocess_image(image):
-    image = image.convert("RGB")
+def extract_features(image):
+    """Preprocess the image for model prediction."""
     image = image.resize((160, 160))
-    image = np.array(image) / 255.0
-    image = np.expand_dims(image, axis=0)
-    return image
+    feature = np.array(image)
+    return np.expand_dims(feature, axis=0)  # Expand dimensions to fit model input
 
-# -----------------------
-# Prediction
-# -----------------------
-def predict_disease(image):
-    img = preprocess_image(image)
-    prediction = model.predict(img, verbose=0)
-    index = int(np.argmax(prediction))
-    return plant_disease.get(str(index), labels[index])
+def model_predict(image):
+    """Predict the disease using the model."""
+    if model is None:
+        return "Model not loaded."
 
-# -----------------------
-# UI
-# -----------------------
-st.title("🌱 Plant Disease Detection")
-st.write("Upload a leaf image to detect plant disease")
+    img = extract_features(image)
+    prediction = model.predict(img)
+    predicted_index = np.argmax(prediction[0])  # Get the index of the highest probability
+    prediction_label = plant_disease[predicted_index]  # Use the predicted index to get the label
+    return prediction_label
 
-uploaded_file = st.file_uploader(
-    "Choose an image",
-    type=["jpg", "jpeg", "png"]
-)
+# Streamlit app interface
+st.title("Plant Disease Recognition")
+uploaded_file = st.file_uploader("Upload an image of the plant leaf:", type=["jpg", "jpeg", "png"])
 
-if uploaded_file:
+if uploaded_file is not None:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_container_width=True)
+    st.image(image, caption='Uploaded Image.', use_column_width=True)
 
-    if st.button("Predict Disease"):
-        with st.spinner("🔍 Analyzing image..."):
-            result = predict_disease(image)
-        st.success("✅ Prediction Complete")
-        st.subheader("🦠 Disease Information")
-        st.write(result)
+    if st.button("Predict"):
+        prediction = model_predict(image)
+        st.write(f"Prediction: {prediction}")
+else:
+    st.write("Please upload an image to get a prediction.")
