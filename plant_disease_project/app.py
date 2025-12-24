@@ -5,11 +5,17 @@ import tensorflow as tf
 from PIL import Image
 import os
 
+# Function to check if the model file exists
+def check_file_exists(file_path):
+    if not os.path.exists(file_path):
+        st.error(f"File not found: {file_path}")
+        return False
+    return True
+
 # Function to load the model with error handling
 def load_model():
     model_path = "models/plant_disease_recog_model_pwp.keras"
-    if not os.path.exists(model_path):
-        st.error(f"Model file not found: {model_path}")
+    if not check_file_exists(model_path):
         return None
     
     try:
@@ -24,11 +30,15 @@ model = load_model()
 
 # Load plant disease labels with error handling
 def load_labels():
+    label_path = "plant_disease.json"
+    if not check_file_exists(label_path):
+        return []
+    
     try:
-        with open("plant_disease.json", 'r') as file:
+        with open(label_path, 'r') as file:
             return json.load(file)
-    except FileNotFoundError:
-        st.error("Label file not found: plant_disease.json")
+    except Exception as e:
+        st.error(f"Error loading labels: {e}")
         return []
 
 plant_disease = load_labels()
@@ -63,3 +73,8 @@ if uploaded_file is not None:
         st.write(f"Prediction: {prediction}")
 else:
     st.write("Please upload an image to get a prediction.")
+
+# Debug outputs to help with file path issues
+st.write(f"Current directory: {os.getcwd()}")
+st.write(f"Model path exists: {os.path.exists('models/plant_disease_recog_model_pwp.keras')}")
+st.write(f"Label path exists: {os.path.exists('plant_disease.json')}")
